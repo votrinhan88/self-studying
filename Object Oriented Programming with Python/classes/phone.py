@@ -1,7 +1,5 @@
-import csv
-from item import Item
+from .item import Item
 
-# Fork from inheritance.py
 # Phone (child class) inherits from Item (parent class)
 class Phone(Item):
     def __init__(self, name: str, price: float, quantity = 0, broken = 0):

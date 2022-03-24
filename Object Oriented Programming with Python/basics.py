@@ -1,7 +1,6 @@
 import csv
 
-from numpy import isin
-
+# Fork from basics.py
 class Item:
     # Class attributes
     payRate = 0.8

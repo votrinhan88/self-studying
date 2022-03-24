@@ -1,7 +1,5 @@
 import csv
-from msilib.schema import Property
 
-# Fork from inheritance.py
 class Item:
     # Class attributes
     payRate = 0.8
@@ -17,28 +15,36 @@ class Item:
 
         # Assign to self object
         self.__name = name
-        self.price = price
+        self.__price = price
         self.quantity = quantity
 
         # Actions to execute
         Item.all.append(self)
 
-    # property decorator = read-only attribute
+    # @property decorator = read-only attribute
     @property
     def name(self):
         return self.__name
-    # setter decorator = Reverser read-only attribute
-    @name.setter
-    def name(self, value):
-        self.__name = value
-
-    def getTotalPrice(self):
-        return self.price * self.quantity
-    
+    @property
+    def price(self):
+        return self.__price
     def applyDiscount(self):
         # Item.payRate is class attribute, cannot be changed externally
         # self.payRate is instance attribute, can be changed externally
-        self.price = self.price * self.payRate
+        self.__price = self.__price * self.payRate
+    def applyIncrement(self, increment = 0.1):
+        self.__price = self.__price * (1 + increment)
+        
+    # @setter decorator = reverse read-only attribute
+    @name.setter
+    def name(self, value):
+        if len(value) > 10:
+            raise Exception('The name cannot have more than 10 characters.')
+        else:
+            self.__name = value
+
+    def getTotalPrice(self):
+        return self.__price * self.quantity
 
     # Magic method to represent variable instead of
     def __repr__(self) -> str:
