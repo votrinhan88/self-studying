@@ -1,15 +1,15 @@
 class HsvFilter:
     def __init__(self,
-                 h_min = None,
-                 s_min = None,
-                 v_min = None,
-                 h_max = None,
-                 s_max = None,
-                 v_max = None,
-                 s_add = None,
-                 s_sub = None,
-                 v_add = None,
-                 v_sub = None):
+                 h_min = 0,
+                 s_min = 0,
+                 v_min = 0,
+                 h_max = 179,
+                 s_max = 255,
+                 v_max = 255,
+                 s_add = 0,
+                 s_sub = 0,
+                 v_add = 0,
+                 v_sub = 0):
         self.h_min = h_min
         self.s_min = s_min
         self.v_min = v_min

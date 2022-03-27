@@ -1,6 +1,11 @@
 import cv2
 import numpy as np
 from hsvfilter import HsvFilter
+import re
+from enemy import Enemy
+# OCR
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
 
 class Vision:
     # Trackbar window
@@ -12,13 +17,12 @@ class Vision:
     needle_h = 0
     method = None
 
-    def __init__(self, needle_img_path, method = cv2.TM_CCOEFF_NORMED):
-        self.needle_img = cv2.imread(needle_img_path)
-
+    def __init__(self, enemy: Enemy, method = cv2.TM_CCOEFF_NORMED):
+        self.enemy = enemy
+        self.needle_img = cv2.cvtColor(cv2.imread(self.enemy.image_path), cv2.COLOR_BGR2GRAY)
         # Save needle image dimension
         self.needle_w = self.needle_img.shape[1]
         self.needle_h = self.needle_img.shape[0]
-
         self.method = method
 
     def find(self, haystack_img, threshold = 0.8, max_results = 10):
@@ -59,6 +63,7 @@ class Vision:
         return points
     
     # Draw rectangle over results
+    @classmethod
     def draw_rectangles(self, haystack_img, rectangles):
         for (x, y, w, h) in rectangles:
             cv2.rectangle(haystack_img,
@@ -108,25 +113,30 @@ class Vision:
         hsvFilter = HsvFilter(**trackbars)
         return hsvFilter
     
-    def applyHsvFilter(self, image, hsvFilter = None):
+    @classmethod
+    def applyHsvFilter(cls, image, hsvFilter = None, mode = 'in'):
         image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         # If default filter is given, use current values in trackbar
         if not hsvFilter:
-            hsvFilter = self.getHsvFilter()
+            hsvFilter = cls.getHsvFilter()
 
         # Shift S and V
         h, s, v = cv2.split(image_hsv)
-        s = self.shiftChannel(s, hsvFilter.s_add)
-        s = self.shiftChannel(s, -hsvFilter.s_sub)
-        v = self.shiftChannel(v, hsvFilter.s_add)
-        v = self.shiftChannel(v, -hsvFilter.v_sub)
+        s = cls.shiftChannel(cls, s, hsvFilter.s_add)
+        s = cls.shiftChannel(cls, s, -hsvFilter.s_sub)
+        v = cls.shiftChannel(cls, v, hsvFilter.s_add)
+        v = cls.shiftChannel(cls, v, -hsvFilter.v_sub)
         image_hsv = cv2.merge([h, s, v])
         
         # Set min, max HSV values
         lower = np.array([hsvFilter.h_min, hsvFilter.s_min, hsvFilter.v_min])
         upper = np.array([hsvFilter.h_max, hsvFilter.s_max, hsvFilter.v_max])
         # Apply thresholds
-        mask = cv2.inRange(image_hsv, lower, upper)
+        if mode == 'in':
+            mask = cv2.inRange(image_hsv, lower, upper)
+        elif mode == 'out':
+            mask = cv2.bitwise_not(cv2.inRange(image_hsv, lower, upper))
+        
         result = cv2.bitwise_and(image_hsv, image_hsv, mask = mask)
 
         image = cv2.cvtColor(result, cv2.COLOR_HSV2BGR)
@@ -143,7 +153,36 @@ class Vision:
             channel[channel <= lim] = 0
             channel[channel < lim] -= amount
         return channel
+    
+    def ocr(self, haystack_img, rectangles):
+        if rectangles.any():
+            (x, y, w, h) = rectangles[np.random.randint(0, high=len(rectangles))]
+            # Text image
+            needle_image = haystack_img[y:y+h, x:x+w]
+            cv2.rectangle(needle_image, (self.enemy.x_left, self.enemy.y_up), (self.enemy.x_right, self.enemy.y_bottom),
+                        color = (0, 255, 0), thickness = 1)
+            cv2.imshow(f'Needle ({self.enemy.name})', needle_image)
 
+            text_image = needle_image[self.enemy.y_up:self.enemy.y_bottom, self.enemy.x_left:self.enemy.x_right]
+            # text_image = cv2.cvtColor(text_image, cv2.COLOR_BGR2GRAY)
+            _, text_image = cv2.threshold(text_image, 63, 255, cv2.THRESH_BINARY)
+            cv2.imshow(f'Text ({self.enemy.name})', text_image)
 
+            text = pytesseract.image_to_string(text_image, lang = 'eng', config = '-c tessedit_char_whitelist=QWERTYUIOPASDFGHJKLZXCVBNM --psm 8 --oem 3')
+            text_fixed = re.sub('[^A-Z]', '', text)
+            return text_fixed
 
+class VisionBonus():
+    def __init__(self, enemy: Enemy):
+        self.enemy = enemy
+        
+    def ocr(self, haystack_img):
+        (x, y, w, h) = (self.enemy.x_left, self.enemy.x_right, self.enemy.y_up, self.enemy.y_bottom)
+        text_image = haystack_img[y:y+h, x:x+w]
+        _, text_image = cv2.threshold(text_image, 191, 255, cv2.THRESH_BINARY_INV)
+        cv2.imshow(f'Text ({self.enemy.name})', text_image)
+        if 0 in text_image:
+            text = pytesseract.image_to_data(text_image, lang = 'eng', config = '-c tessedit_char_whitelist=QWERTYUIOPASDFGHJKLZXCVBNM --psm 7 --oem 3')
+            text_fixed = re.sub('[^A-Z]', '', text)
+            return text_fixed
 

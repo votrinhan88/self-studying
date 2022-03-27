@@ -14,7 +14,7 @@ class Item:
     @classmethod
     def someClassMethod(cls):
         '''
-        This should do something that has a relatioship with the class, but usually to manipulate different structures of data to instantitate objects.
+        This should do something that has a relationship with the class, but usually to manipulate different structures of data to instantitate objects.
         It requires a mandatory variable (cls of class, different from self of internal methods).
         Example: loadFromCSV()
         '''
