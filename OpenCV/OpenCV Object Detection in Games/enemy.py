@@ -6,3 +6,11 @@ class Enemy:
         self.x_right = x_right
         self.y_up = y_up
         self.y_bottom = y_bottom
+
+class Bonus:
+    def __init__(self, name: str, x, y, w, h):
+        self.name = name
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h

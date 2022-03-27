@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from hsvfilter import HsvFilter
 import re
-from enemy import Enemy
+from enemy import Enemy, Bonus
 # OCR
 import pytesseract
 pytesseract.pytesseract.tesseract_cmd = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
@@ -173,16 +173,18 @@ class Vision:
             return text_fixed
 
 class VisionBonus():
-    def __init__(self, enemy: Enemy):
-        self.enemy = enemy
+    def __init__(self, bonus: Bonus):
+        self.name = bonus.name
+        self.x = bonus.x
+        self.y = bonus.y
+        self.w = bonus.w
+        self.h = bonus.h
         
     def ocr(self, haystack_img):
-        (x, y, w, h) = (self.enemy.x_left, self.enemy.x_right, self.enemy.y_up, self.enemy.y_bottom)
-        text_image = haystack_img[y:y+h, x:x+w]
+        text_image = haystack_img[self.y:self.y+self.h, self.x:self.x+self.w]
         _, text_image = cv2.threshold(text_image, 191, 255, cv2.THRESH_BINARY_INV)
-        cv2.imshow(f'Text ({self.enemy.name})', text_image)
+        cv2.imshow(f'Text ({self.name})', text_image)
         if 0 in text_image:
             text = pytesseract.image_to_data(text_image, lang = 'eng', config = '-c tessedit_char_whitelist=QWERTYUIOPASDFGHJKLZXCVBNM --psm 7 --oem 3')
             text_fixed = re.sub('[^A-Z]', '', text)
             return text_fixed
-

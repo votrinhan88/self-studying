@@ -5,7 +5,7 @@ import win32com.client
 from windowcapture import WindowCapture
 from vision import Vision, VisionBonus
 from hsvfilter import HsvFilter
-from enemy import Enemy
+from enemy import Enemy, Bonus
 
 # Typer
 wsh = win32com.client.Dispatch("WScript.Shell")
@@ -19,22 +19,21 @@ stdscr = curses.initscr()
 
 shark = Enemy('Shark', 'src/shark.jpg', 47, 127, 8, 28)
 piranha = Enemy('Piranha', 'src/piranha.jpg', 15, 31, 17, 35)
-bonus = Enemy('Bonus', None, 245, 285, 150, 35)
+bonus = Bonus('Bonus', 245, 285, 150, 35)
 # Needles
 n_shark = Vision(enemy = shark)
 n_piranha = Vision(enemy = piranha)
-n_bonus = VisionBonus(enemy = bonus)
+n_bonus = VisionBonus(bonus = bonus)
 
 filter_sea = HsvFilter(h_min = 115, h_max = 116)
 
 wincap = WindowCapture('Typer Shark Deluxe 1.02')
 
-loop_time = time.time()
 while (True):
-    
+    loop_time = time.time()
     screenshot = wincap.capture()
     
-    loop_time = time.time()
+    
     haystack = Vision.applyHsvFilter(screenshot.copy(), filter_sea, mode = 'out')
     haystack = cv2.cvtColor(haystack, cv2.COLOR_BGR2GRAY)
 
@@ -45,6 +44,7 @@ while (True):
     text_shark = n_shark.ocr(haystack, rect_shark)
     text_piranha = n_piranha.ocr(haystack, rect_piranha)
     text_bonus = n_bonus.ocr(haystack)
+    
     
     stdscr.erase()
     stdscr.addstr(0, 0, f'FPS: {1/(time.time() - loop_time):.2f}')
