@@ -23,22 +23,32 @@ X_test, y_test = (torch.tensor(data.iloc[round(data_size*0.8):, :-1].values.asty
                   torch.tensor(data.iloc[round(data_size*0.8):, -1].values.astype(np.int64)).unsqueeze(dim = -1))
 
 class Node():
-    def __init__(self, depth = None, info = None, feature = None, threshold = None, children = [], path = ''):
+    def __init__(self, depth = None, info = None, feature = None, threshold = None, parent = None,
+                 children = [], path:str = ''):
         self.is_leaf = False
         # Pre-allocate
         self.depth     = depth
         self.info      = info
         self.feature   = feature
         self.threshold = threshold
+        self.parent    = parent
         self.children  = children
         self.path      = path
 
-        self.distr     = None
+        self.distr:torch.Tensor = None
 
     # Magic method to represent variable
     def __repr__(self) -> str:
         # Magic attribute to get class name
-        return f"{self.__class__.__name__} {self.path}, I = {self.info}, distr = {self.distr.numpy()}"
+        if self.depth == 0:
+            return f"{self.__class__.__name__} Stump, I = {self.info}, distr = {self.distr.numpy()}"
+        elif self.depth > 0:
+            return f"{self.__class__.__name__} {self.path}, I = {self.info}, distr = {self.distr.numpy()}"
+
+    def branch(self):
+        left_node  = Node(depth = self.depth + 1, path = self.path + 'L', parent = self)
+        right_node = Node(depth = self.depth + 1, path = self.path + 'R', parent = self)
+        return left_node, right_node
 
 class DecisionTreeClassier():
     def __init__(self, max_depth = 4, method_info = 'entropy'):
@@ -62,8 +72,7 @@ class DecisionTreeClassier():
         if max_gain > 0:
             # Continue growing
             ## Re-split data by optimal feature and threshold for children nodes
-            left_node  = Node(depth = node.depth + 1, path = node.path + 'L')
-            right_node = Node(depth = node.depth + 1, path = node.path + 'R')
+            left_node, right_node = node.branch()
             self.depth = max(self.depth, node.depth + 1)
 
             node.children = [left_node, right_node]
@@ -126,13 +135,17 @@ class DecisionTreeClassier():
 
     def print_tree(self):
         def traverse_print(node: Node):
-            if node.is_leaf == True:
-                print(f"{'    '*node.depth} Branch {node.path}: {node.distr.numpy()}")
-            elif node.is_leaf == False:
-                if node.depth == 0:
-                    print(f"{'    '*node.depth} Stump (x{node.feature.item()}, {node.threshold.item():.2f}): {node.distr.numpy()}")
-                elif node.depth > 0:
-                    print(f"{'    '*node.depth} Branch {node.path} (x{node.feature.item()}, {node.threshold.item():.2f}): {node.distr.numpy()}")
+            # Print node
+            if node.depth == 0:
+                print(f"{'    '*node.depth}Stump: {node.distr.numpy()}")
+            elif node.depth > 0:
+                if node.path[-1] == 'L':
+                    print(f"{'    '*node.depth} Branch {node.path} (x{node.parent.feature.item()} ≤ {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
+                if node.path[-1] == 'R':
+                    print(f"{'    '*node.depth} Branch {node.path} (x{node.parent.feature.item()} > {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
+            
+            # Go to children branches
+            if node.is_leaf == False:
                 for branch in node.children:
                     traverse_print(branch)
             
