@@ -151,9 +151,30 @@ class DecisionTreeClassier():
             
         traverse_print(self.stump)
 
+    def forward(self, input) -> torch.Tensor:
+        # Method 1: Traverse each example through the tree
+        def traverse_forward(node:Node, input, yhat) -> torch.Tensor:
+            if yhat is not None:
+                return yhat
+            elif yhat is None:
+                if node.is_leaf == True:
+                    return node.distr.max(dim = 0)[1]
+                elif node.is_leaf == False:
+                    if input[node.feature] < node.threshold:
+                        return traverse_forward(node.children[0], input, yhat)
+                    elif input[node.feature] >= node.threshold:
+                        return traverse_forward(node.children[1], input, yhat)
+        
+        yhat = -torch.ones([input.size()[0], 1], dtype = torch.int8)
+        for example in torch.arange(input.size()[0]):
+            yhat[example] = traverse_forward(h.stump, input[example, :], yhat = None)
+
+        return yhat
+
 
 h = DecisionTreeClassier(max_depth = 4, method_info = 'Gini')
 h.fit(X_train, y_train)
 h.print_tree()
-
-print()
+yhat = h.forward(X_test)
+# print(yhat.squeeze())
+print(f'Accuracy = {((yhat == y_test).sum()/yhat.size()[0]).item():.4f}')
