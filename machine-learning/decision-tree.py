@@ -4,8 +4,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import pandas as pd
-# from typing import List
-
 
 # Load and process data
 data = pd.read_csv('./data/iris.csv')
@@ -137,12 +135,12 @@ class DecisionTreeClassier():
         def traverse_print(node: Node):
             # Print node
             if node.depth == 0:
-                print(f"{'    '*node.depth}Stump: {node.distr.numpy()}")
+                print(f"Stump: {node.distr.numpy()}")
             elif node.depth > 0:
                 if node.path[-1] == 'L':
-                    print(f"{'    '*node.depth} Branch {node.path} (x{node.parent.feature.item()} ≤ {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
+                    print(f"{'    '*node.depth}Branch {node.path} (x{node.parent.feature.item()} ≤ {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
                 if node.path[-1] == 'R':
-                    print(f"{'    '*node.depth} Branch {node.path} (x{node.parent.feature.item()} > {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
+                    print(f"{'    '*node.depth}Branch {node.path} (x{node.parent.feature.item()} > {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
             
             # Go to children branches
             if node.is_leaf == False:
@@ -151,30 +149,69 @@ class DecisionTreeClassier():
             
         traverse_print(self.stump)
 
-    def forward(self, input) -> torch.Tensor:
-        # Method 1: Traverse each example through the tree
-        def traverse_forward(node:Node, input, yhat) -> torch.Tensor:
-            if yhat is not None:
-                return yhat
-            elif yhat is None:
+    def forward(self, input:torch.Tensor, method = 'all') -> torch.Tensor:
+        if method == 'each':
+            # Method 1: Loop and traverse each example through the tree
+            def traverse_forward(node:Node, input:torch.Tensor, yhat) -> torch.Tensor:
+                if yhat is not None:
+                    return yhat
+                elif yhat is None:
+                    if node.is_leaf == True:
+                        return node.distr.max(dim = 0)[1]
+                    elif node.is_leaf == False:
+                        if input[node.feature] < node.threshold:
+                            return traverse_forward(node.children[0], input, yhat)
+                        elif input[node.feature] >= node.threshold:
+                            return traverse_forward(node.children[1], input, yhat)
+            
+            yhat = -torch.ones([input.size()[0], 1], dtype = torch.int8)
+            for example in torch.arange(input.size()[0]):
+                yhat[example] = traverse_forward(self.stump, input[example, :], yhat = None)
+            return yhat
+
+        elif method == 'all':
+            # Method 2: Traverse all examples through the tree at once
+            def traverse_forward(node:Node, input:torch.Tensor, yhat:torch.Tensor, yhat_id:torch.Tensor) -> torch.Tensor:
                 if node.is_leaf == True:
-                    return node.distr.max(dim = 0)[1]
+                    yhat[yhat_id.squeeze()] = node.distr.max(dim = 0)[1]
+                    return yhat
                 elif node.is_leaf == False:
-                    if input[node.feature] < node.threshold:
-                        return traverse_forward(node.children[0], input, yhat)
-                    elif input[node.feature] >= node.threshold:
-                        return traverse_forward(node.children[1], input, yhat)
-        
-        yhat = -torch.ones([input.size()[0], 1], dtype = torch.int8)
-        for example in torch.arange(input.size()[0]):
-            yhat[example] = traverse_forward(h.stump, input[example, :], yhat = None)
+                    left_ind = input[:, node.feature] < node.threshold
+                    left_input, right_input = input[left_ind, :], input[~left_ind, :]
+                    left_yhat_id, right_yhat_id = yhat_id[left_ind, :], yhat_id[~left_ind, :]
+                    for branch, branch_input, branch_yhat_id in zip(node.children, [left_input, right_input], [left_yhat_id, right_yhat_id]):
+                        if len(branch_yhat_id) > 0:
+                            yhat = traverse_forward(branch, branch_input, yhat, branch_yhat_id)
+                    return yhat
 
-        return yhat
-
+            yhat = -torch.ones([input.size()[0], 1], dtype = torch.long)
+            yhat_id = torch.arange(input.size()[0]).unsqueeze(dim = 1)
+            yhat = traverse_forward(self.stump, input, yhat, yhat_id)
+            return yhat
 
 h = DecisionTreeClassier(max_depth = 4, method_info = 'Gini')
 h.fit(X_train, y_train)
 h.print_tree()
 yhat = h.forward(X_test)
-# print(yhat.squeeze())
-print(f'Accuracy = {((yhat == y_test).sum()/yhat.size()[0]).item():.4f}')
+print(f'Accuracy = {((yhat == y_test).sum()/y_test.size()[0]).item():.4f}')
+
+'''
+Snippet to benchmarking tree.forward() using method = 'each' vs 'all'
+
+import time
+
+start = time.time()
+yhat_each = h.forward(X_test, method = 'each')
+end = time.time()
+time1 = end - start
+print(f'Forwarding examples one-by-one: {time1:.2e} s')
+
+start = time.time()
+yhat_all = h.forward(X_test, method = 'all')
+end = time.time()
+time2 = end - start
+print(f'Forwarding examples all at once: {time2:.2e} s')
+
+print(f'Faster how many times? {time1/time2:.2f}')
+print(f'Confirm results of both methods are the same: {(yhat_each == yhat_all).prod().bool().item()}')
+'''
