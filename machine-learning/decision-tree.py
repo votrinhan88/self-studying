@@ -39,9 +39,9 @@ class Node():
     def __repr__(self) -> str:
         # Magic attribute to get class name
         if self.depth == 0:
-            return f"{self.__class__.__name__} Stump, I = {self.info}, distr = {self.distr.numpy()}"
+            return f"{self.__class__.__name__} Stump, I = {self.info:.3f}, distr = {self.distr.numpy()}"
         elif self.depth > 0:
-            return f"{self.__class__.__name__} {self.path}, I = {self.info}, distr = {self.distr.numpy()}"
+            return f"{self.__class__.__name__} {self.path}, I = {self.info:.3f}, distr = {self.distr.numpy()}"
 
     def branch(self):
         left_node  = Node(depth = self.depth + 1, path = self.path + 'L', parent = self)
@@ -49,7 +49,7 @@ class Node():
         return left_node, right_node
 
 class DecisionTreeClassier():
-    def __init__(self, max_depth = 4, method_info = 'entropy'):
+    def __init__(self, max_depth = 4, method_info = 'Gini'):
         self.max_depth = max_depth
         self.method_info = method_info
         self.depth = 0
@@ -123,12 +123,19 @@ class DecisionTreeClassier():
         gain = node.info - (left.size()[0]*left_info + right.size()[0]*right_info)/y_node.size()[0]
         return gain
 
-    def compute_info(self, label:torch.Tensor):
+    def compute_info(self, label:torch.Tensor) -> torch.Tensor:
         distr = F.one_hot(label.squeeze(dim = 1), num_classes = self.num_classes).sum(dim = 0)
+        distr = distr/distr.sum()
         if self.method_info == 'Gini':
-            info = 1 - ((distr/distr.sum())**2).sum()
+            info = 1 - (distr**2).sum()
         elif self.method_info == 'entropy':
-            info = 0
+            # Side note:
+            # 1. Entropy of a system (all classes) = sum of entropy of its parts (each class)
+            # 2. Moreover, if a class has no examples, it is absolutely predictable absent, hence its
+            #   entropy is 0.
+            # 3. To ease dealing with absent classes (which yields log(0) = -inf), and (2.), the 
+            #   computation only considers existing classes.
+            info = -(distr[distr != 0]*distr[distr != 0].log()).sum()
         return info
 
     def print_tree(self):
@@ -141,7 +148,6 @@ class DecisionTreeClassier():
                     print(f"{'    '*node.depth}Branch {node.path} (x{node.parent.feature.item()} ≤ {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
                 if node.path[-1] == 'R':
                     print(f"{'    '*node.depth}Branch {node.path} (x{node.parent.feature.item()} > {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
-            
             # Go to children branches
             if node.is_leaf == False:
                 for branch in node.children:
@@ -189,7 +195,7 @@ class DecisionTreeClassier():
             yhat = traverse_forward(self.stump, input, yhat, yhat_id)
             return yhat
 
-h = DecisionTreeClassier(max_depth = 4, method_info = 'Gini')
+h = DecisionTreeClassier(max_depth = 4)
 h.fit(X_train, y_train)
 h.print_tree()
 yhat = h.forward(X_test)
