@@ -5,21 +5,6 @@ import torch
 import torch.nn.functional as F
 import pandas as pd
 
-# Load and process data
-data = pd.read_csv('./data/iris.csv')
-data_size = len(data)
-# Map Iris variety to numerical label
-data.loc[data['variety'] == 'Versicolor', 'variety'] = 0
-data.loc[data['variety'] == 'Virginica', 'variety'] = 1
-data.loc[data['variety'] == 'Setosa', 'variety'] = 2
-# Shuffle data, split to train and test set
-data = data.iloc[torch.randperm(data_size), :]
-# data = data.iloc[0:20, :]
-X_train, y_train = (torch.tensor(data.iloc[0:round(data_size*0.8), :-1].values.astype(np.float32)),
-                    torch.tensor(data.iloc[0:round(data_size*0.8), -1].values.astype(np.int64)).unsqueeze(dim = -1))
-X_test, y_test = (torch.tensor(data.iloc[round(data_size*0.8):, :-1].values.astype(np.float32)),
-                  torch.tensor(data.iloc[round(data_size*0.8):, -1].values.astype(np.int64)).unsqueeze(dim = -1))
-
 class Node():
     def __init__(self, depth = None, info = None, feature = None, threshold = None, parent = None,
                  children = [], path:str = ''):
@@ -195,11 +180,28 @@ class DecisionTreeClassier():
             yhat = traverse_forward(self.stump, input, yhat, yhat_id)
             return yhat
 
-h = DecisionTreeClassier(max_depth = 4)
-h.fit(X_train, y_train)
-h.print_tree()
-yhat = h.forward(X_test)
-print(f'Accuracy = {((yhat == y_test).sum()/y_test.size()[0]).item():.4f}')
+if __name__ == '__main__':
+    # Load and process data
+    data = pd.read_csv('./data/iris.csv')
+    data_size = len(data)
+    # Map Iris variety to numerical label
+    data.loc[data['variety'] == 'Versicolor', 'variety'] = 0
+    data.loc[data['variety'] == 'Virginica', 'variety'] = 1
+    data.loc[data['variety'] == 'Setosa', 'variety'] = 2
+    # Shuffle data, split to train and test set
+    data = data.iloc[torch.randperm(data_size), :]
+    # data = data.iloc[0:20, :]
+    X_train, y_train = (torch.tensor(data.iloc[0:round(data_size*0.8), :-1].values.astype(np.float32)),
+                        torch.tensor(data.iloc[0:round(data_size*0.8), -1].values.astype(np.int64)).unsqueeze(dim = -1))
+    X_test, y_test = (torch.tensor(data.iloc[round(data_size*0.8):, :-1].values.astype(np.float32)),
+                    torch.tensor(data.iloc[round(data_size*0.8):, -1].values.astype(np.int64)).unsqueeze(dim = -1))
+
+    h = DecisionTreeClassier(max_depth = 4)
+    h.fit(X_train, y_train)
+    h.print_tree()
+    yhat = h.forward(X_test)
+    print(f'Accuracy = {((yhat == y_test).sum()/y_test.size()[0]).item():.4f}')
+
 
 '''
 Snippet to benchmarking tree.forward() using method = 'each' vs 'all'
