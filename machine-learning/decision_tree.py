@@ -5,6 +5,8 @@ import torch
 import torch.nn.functional as F
 import pandas as pd
 
+MAX_DEPTH = 4
+
 class Node():
     def __init__(self, depth = None, info = None, feature = None, threshold = None, parent = None,
                  children = [], path:str = ''):
@@ -24,7 +26,7 @@ class Node():
     def __repr__(self) -> str:
         # Magic attribute to get class name
         if self.depth == 0:
-            return f"{self.__class__.__name__} Stump, I = {self.info:.3f}, distr = {self.distr.numpy()}"
+            return f"{self.__class__.__name__} Root, I = {self.info:.3f}, distr = {self.distr.numpy()}"
         elif self.depth > 0:
             return f"{self.__class__.__name__} {self.path}, I = {self.info:.3f}, distr = {self.distr.numpy()}"
 
@@ -33,11 +35,14 @@ class Node():
         right_node = Node(depth = self.depth + 1, path = self.path + 'R', parent = self)
         return left_node, right_node
 
-class DecisionTreeClassier():
-    def __init__(self, max_depth = 4, method_info = 'Gini'):
+class DecisionTreeClassifier():
+    def __init__(self, max_depth = MAX_DEPTH, method_info = 'Gini'):
         self.max_depth = max_depth
         self.method_info = method_info
         self.depth = 0
+
+    def __repr__(self):
+        return f"DT with depth {self.depth} (max {self.max_depth})"
 
     def fit(self, X_train:torch.Tensor, y_train:torch.Tensor):
         self.X_train = X_train
@@ -45,10 +50,10 @@ class DecisionTreeClassier():
         self.num_features = X_train.size()[1]
         self.num_classes = y_train.unique().size()[0]
 
-        self.stump = Node(depth = 0)
-        self.stump.distr = F.one_hot(y_train.squeeze(dim = 1), num_classes = self.num_classes).sum(dim = 0)
-        self.stump.info = self.compute_info(y_train)
-        self.grow(node = self.stump, X_node = X_train, y_node = y_train)
+        self.root = Node(depth = 0)
+        self.root.distr = F.one_hot(y_train.squeeze(dim = 1), num_classes = self.num_classes).sum(dim = 0)
+        self.root.info = self.compute_info(y_train)
+        self.grow(node = self.root, X_node = X_train, y_node = y_train)
 
     def grow(self, node:Node, X_node:torch.Tensor, y_node:torch.Tensor):
         max_gain = self.find_best_split(node, X_node, y_node)
@@ -127,7 +132,7 @@ class DecisionTreeClassier():
         def traverse_print(node: Node):
             # Print node
             if node.depth == 0:
-                print(f"Stump: {node.distr.numpy()}")
+                print(f"Root: {node.distr.numpy()}")
             elif node.depth > 0:
                 if node.path[-1] == 'L':
                     print(f"{'    '*node.depth}Branch {node.path} (x{node.parent.feature.item()} ≤ {node.parent.threshold.item():.2f}): {node.distr.numpy()}")
@@ -138,7 +143,7 @@ class DecisionTreeClassier():
                 for branch in node.children:
                     traverse_print(branch)
             
-        traverse_print(self.stump)
+        traverse_print(self.root)
 
     def forward(self, input:torch.Tensor, method = 'all') -> torch.Tensor:
         if method == 'each':
@@ -157,7 +162,7 @@ class DecisionTreeClassier():
             
             yhat = -torch.ones([input.size()[0], 1], dtype = torch.int8)
             for example in torch.arange(input.size()[0]):
-                yhat[example] = traverse_forward(self.stump, input[example, :], yhat = None)
+                yhat[example] = traverse_forward(self.root, input[example, :], yhat = None)
             return yhat
 
         elif method == 'all':
@@ -177,7 +182,7 @@ class DecisionTreeClassier():
 
             yhat = -torch.ones([input.size()[0], 1], dtype = torch.long)
             yhat_id = torch.arange(input.size()[0]).unsqueeze(dim = 1)
-            yhat = traverse_forward(self.stump, input, yhat, yhat_id)
+            yhat = traverse_forward(self.root, input, yhat, yhat_id)
             return yhat
 
 if __name__ == '__main__':
@@ -190,13 +195,12 @@ if __name__ == '__main__':
     data.loc[data['variety'] == 'Setosa', 'variety'] = 2
     # Shuffle data, split to train and test set
     data = data.iloc[torch.randperm(data_size), :]
-    # data = data.iloc[0:20, :]
     X_train, y_train = (torch.tensor(data.iloc[0:round(data_size*0.8), :-1].values.astype(np.float32)),
                         torch.tensor(data.iloc[0:round(data_size*0.8), -1].values.astype(np.int64)).unsqueeze(dim = -1))
     X_test, y_test = (torch.tensor(data.iloc[round(data_size*0.8):, :-1].values.astype(np.float32)),
                     torch.tensor(data.iloc[round(data_size*0.8):, -1].values.astype(np.int64)).unsqueeze(dim = -1))
 
-    h = DecisionTreeClassier(max_depth = 4)
+    h = DecisionTreeClassifier(max_depth = 3)
     h.fit(X_train, y_train)
     h.print_tree()
     yhat = h.forward(X_test)
