@@ -60,15 +60,13 @@ class DecisionTreeClassifier():
         if max_gain > 0:
             # Continue growing
             ## Re-split data by optimal feature and threshold for children nodes
-            left_node, right_node = node.branch()
             self.depth = max(self.depth, node.depth + 1)
-
+            left_node, right_node = node.branch()
             node.children = [left_node, right_node]
 
             left_ind = X_node[:, node.feature] <= node.threshold
             X_left, y_left = X_node[left_ind], y_node[left_ind]
             X_right, y_right = X_node[~left_ind], y_node[~left_ind]
-            
             # Leaf node:
             #  - Has a unique class distribution (contains only one class)
             #  - OR has reached max depth
@@ -94,12 +92,10 @@ class DecisionTreeClassifier():
                 if gain > max_gain:
                     max_gain = gain
                     opt_feature = feature
-                    opt_threshold = threshold
-        
+                    opt_threshold = threshold        
         # Update node with optimal split
         node.feature = opt_feature
         node.threshold = opt_threshold
-        
         return max_gain
 
     def split(self, X_node:torch.Tensor, y_node:torch.Tensor, feature, threshold):
