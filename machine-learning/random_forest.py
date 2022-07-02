@@ -1,10 +1,5 @@
 import torch
 from decision_tree import Node, DecisionTreeClassifier
-from utils_data import get_iris
-
-NUM_TREES = 100
-BAGGING_SIZE = 0.4
-MAX_DEPTH = 2
 
 class DecisionTreeInRFClassifier(DecisionTreeClassifier):
     def __init__(self, max_depth = 2):
@@ -41,7 +36,7 @@ class DecisionTreeInRFClassifier(DecisionTreeClassifier):
         return max_gain
 
 class RandomForestClassifier():
-    def __init__(self, num_trees = NUM_TREES, bagg_ratio = BAGGING_SIZE, max_depth = MAX_DEPTH):
+    def __init__(self, num_trees = 100, bagg_ratio = 0.4, max_depth = 2):
         self.num_trees  = num_trees
         self.bagg_ratio = bagg_ratio
         self.bagg_size  = None
@@ -52,6 +47,7 @@ class RandomForestClassifier():
 
     def fit(self, X_train:torch.Tensor, y_train:torch.Tensor):
         num_examples = X_train.size()[0]
+        self.num_classes = len(y_train.unique())
         self.bagg_size = torch.tensor(self.bagg_ratio*num_examples).ceil().type(torch.int).item()
         # Create forest
         self.trees = [DecisionTreeInRFClassifier(max_depth = self.max_depth) for i in range(self.num_trees)]
@@ -70,12 +66,36 @@ class RandomForestClassifier():
         return yhat
         
 if __name__ == '__main__':
-    X_train, y_train, X_test, y_test = get_iris()
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
+    from utils_data import get_2D_clusters
 
-    for i in range(5):
-        h = RandomForestClassifier(max_depth = 2)
-        h.fit(X_train, y_train)
-        yhat = h.forward(X_test)
-        if i == 0:
-            print(h)
-        print(f'Run {i}: Accuracy = {((yhat == y_test).sum()/y_test.size()[0]).item():.4f}')
+    NUM_CLUSTERS = 4
+    PLOT_STEP = 0.01
+    COLORS = ['red', 'blue', 'green', 'magenta', 'cyan', 'yellow', 'black', 'tab:blue', 'tab:orange', 'tab:green',
+            'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+
+    X_train, y_train = get_2D_clusters(num_clusters = NUM_CLUSTERS)
+
+    h = RandomForestClassifier(num_trees = 200, max_depth = 2)
+    h.fit(X_train, y_train)
+    
+    # Visualize regions of each class
+    ptp_X = X_train.max(dim = 0)[0] - X_train.min(dim = 0)[0]
+    plot_x1 = torch.arange(X_train[:, 0].min() - 0.2*ptp_X[0], X_train[:, 0].max() + 0.2*ptp_X[1], PLOT_STEP)
+    plot_x2 = torch.arange(X_train[:, 1].min() - 0.2*ptp_X[0], X_train[:, 1].max() + 0.2*ptp_X[1], PLOT_STEP)
+    x1, x2 = torch.meshgrid([plot_x1 - PLOT_STEP/2, plot_x2 - PLOT_STEP/2])
+    X_plot = torch.cat([x1.flatten().unsqueeze(dim = 1), x2.flatten().unsqueeze(dim = 1)], dim = 1)
+    yhat_plot = h.forward(X_plot).reshape([plot_x1.size()[0], plot_x2.size()[0]])
+    
+    # Plot all centroids and examples 
+    fig, ax = plt.subplots()
+    ax.set_title(f'Random Forest Classifier ({h.num_trees} trees, max depth {h.max_depth}, {h.bagg_ratio*100:.1f}% bagging) ' +
+                 f'for {NUM_CLUSTERS} clusters')
+    for label in torch.arange(h.num_classes):
+        # Training data
+        ax.scatter(X_train[y_train.squeeze() == label, 0], X_train[y_train.squeeze() == label, 1],
+                   color = COLORS[label], alpha = 0.7, s = 10, zorder = 100)
+
+    ax.pcolormesh(x1, x2, yhat_plot, cmap = ListedColormap(COLORS[0:h.num_classes]), alpha = 0.5, shading = 'auto')
+    plt.show()
