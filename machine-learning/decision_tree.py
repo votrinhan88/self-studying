@@ -1,9 +1,8 @@
 # Topic: Supervised, Classification
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-import pandas as pd
+from utils_data import get_iris
 
 MAX_DEPTH = 4
 
@@ -182,21 +181,9 @@ class DecisionTreeClassifier():
             return yhat
 
 if __name__ == '__main__':
-    # Load and process data
-    data = pd.read_csv('./data/iris.csv')
-    data_size = len(data)
-    # Map Iris variety to numerical label
-    data.loc[data['variety'] == 'Versicolor', 'variety'] = 0
-    data.loc[data['variety'] == 'Virginica', 'variety'] = 1
-    data.loc[data['variety'] == 'Setosa', 'variety'] = 2
-    # Shuffle data, split to train and test set
-    data = data.iloc[torch.randperm(data_size), :]
-    X_train, y_train = (torch.tensor(data.iloc[0:round(data_size*0.8), :-1].values.astype(np.float32)),
-                        torch.tensor(data.iloc[0:round(data_size*0.8), -1].values.astype(np.int64)).unsqueeze(dim = -1))
-    X_test, y_test = (torch.tensor(data.iloc[round(data_size*0.8):, :-1].values.astype(np.float32)),
-                    torch.tensor(data.iloc[round(data_size*0.8):, -1].values.astype(np.int64)).unsqueeze(dim = -1))
+    X_train, y_train, X_test, y_test = get_iris()    
 
-    h = DecisionTreeClassifier(max_depth = 3)
+    h = DecisionTreeClassifier(max_depth = 2)
     h.fit(X_train, y_train)
     h.print_tree()
     yhat = h.forward(X_test)
