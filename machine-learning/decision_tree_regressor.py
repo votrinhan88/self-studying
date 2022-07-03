@@ -166,25 +166,26 @@ class DecisionTreeRegressor():
             yhat = traverse_forward(self.root, input, yhat, yhat_id)
             return yhat
 
-# Dummy data
-X_train = 10*torch.rand([20, 1])
-y_train = 0.8*X_train + torch.sin(X_train)
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
 
-h = DecisionTreeRegressor(max_depth = 4)
-h.fit(X_train, y_train)
+    # Dummy data
+    X_train = 10*torch.rand([20, 1])
+    y_train = 0.8*X_train + torch.sin(X_train)
 
-X_test = torch.arange(start = -2, end = 12, step = 0.01).unsqueeze(dim = 1)
-y_test = h.forward(X_test)
+    h = DecisionTreeRegressor(max_depth = 4)
+    h.fit(X_train, y_train)
 
-
-import matplotlib.pyplot as plt
-fig, ax = plt.subplots(constrained_layout = True)
-ax.scatter(X_train, y_train,
-           color = 'black', s = 40, label = 'Observed')
-ax.step(X_test, y_test,
-        linewidth = 2, color = 'blue', label = 'DT prediction')
-ax.plot(X_test, 0.8*X_test + torch.sin(X_test),
-        linewidth = 1, linestyle = 'dashed', color = 'red', alpha = 0.5, label = 'Ground truth')
-ax.set(title = f"Decision Tree Regressor with depth {h.depth} (max {h.max_depth})")
-ax.legend()
-plt.show()
+    X_test = torch.arange(start = -2, end = 12, step = 0.01).unsqueeze(dim = 1)
+    y_test = h.forward(X_test)
+    
+    fig, ax = plt.subplots(constrained_layout = True)
+    ax.scatter(X_train, y_train,
+            color = 'black', s = 40, label = 'Observed')
+    ax.step(X_test, y_test,
+            linewidth = 2, color = 'blue', label = 'DT prediction')
+    ax.plot(X_test, 0.8*X_test + torch.sin(X_test),
+            linewidth = 1, linestyle = 'dashed', color = 'red', alpha = 0.5, label = 'Ground truth')
+    ax.set(title = f"Decision Tree Regressor with depth {h.depth} (max {h.max_depth})")
+    ax.legend()
+    plt.show()
