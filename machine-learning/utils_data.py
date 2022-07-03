@@ -16,7 +16,11 @@ def get_iris():
         torch.tensor(data.iloc[:, [-1]].to_numpy(dtype = np.int64)))
     return X, y
 
-def get_2D_clusters(num_clusters, sigma_diag = 0.2, radius = 1, num_examples = 600):
+def get_clusters_2D(num_clusters, sigma_diag = 0.2, radius = 1, num_examples = 600):
+    '''
+    num_clusters: number of clusters
+    sigma_diag:   
+    '''
     pi = torch.acos(torch.zeros(1)).item()*2
     # Mu and Sigma for Gaussian distributions
     mu = torch.cat(
