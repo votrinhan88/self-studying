@@ -6,7 +6,7 @@ from typing import Literal, Tuple
 
 from decision_tree import DecisionTree, Node
 
-class DecisionTreeAdaBoost(DecisionTree):
+class DecisionTreeWeighted(DecisionTree):
     def __init__(self, method_info:Literal['gini', 'entropy'] = 'gini',
                        max_depth:int = 1,
                        drop_features:bool = True):
@@ -16,77 +16,8 @@ class DecisionTreeAdaBoost(DecisionTree):
 
     def fit(self, X_train:torch.Tensor, y_train:torch.Tensor, weights:torch.Tensor):
         self.weights = weights
-        self.X_train = X_train
-        self.y_train = y_train
-
-        self.num_features = X_train.size()[1]
-        self.feature_picks = torch.arange(self.num_features)
-
-        self.root = Node(depth = 0, task = self.task)
-
-        if self.task == 'c':
-            self.num_classes = len(y_train.unique())
-            self.feed = self.feed_c
-            self.compute_info = self.compute_info_c
-
-        idx_root = torch.arange(self.X_train.size()[0])
-        self.feed(self.root, idx_root)
-        self.grow(self.root, idx_root)
-
-    def grow(self, node:Node, idx_node:torch.Tensor):
-        max_gain = self.find_best_split(node, idx_node)
-        if max_gain > 0:
-            # Continue growing
-            self.depth = max(self.depth, node.depth + 1)
-            left_node, right_node = node.branch()
-            node.children = [left_node, right_node]
-            # Re-split data by optimal feature and threshold for children nodes
-            idx_left, idx_right = self.split(idx_node, feature = node.feature, threshold = node.threshold)
-            # Leaf node:
-            #  - Has a unique class distribution (contains only one class)
-            #  - OR has reached max depth
-            for (branch, idx_branch) in zip([left_node, right_node], [idx_left, idx_right]):
-                self.feed(branch, idx_branch)
-                y_branch = self.y_train[idx_branch]
-                if (len(y_branch.unique()) == 1) | (branch.depth == self.max_depth):
-                    branch.is_leaf = True
-                else:
-                    self.grow(branch, idx_branch)
-
-    def find_best_split(self, node:Node, idx_node:torch.Tensor):
-        X_node = self.X_train[idx_node]
-        # Select random features (sqrt() of previous node's num_features)
-        if self.drop_features == True:
-            shuffle_idx = torch.randperm(self.feature_picks.numel())
-            self.feature_picks = self.feature_picks.view(-1)[shuffle_idx].view(self.feature_picks.size())
-            self.feature_picks = self.feature_picks[0:int(self.feature_picks.numel()**0.5)]
-        # Split based on the reduced set of features (or not)
-        max_gain = -torch.tensor(float('inf'))
-        for feature in torch.arange(self.num_features):
-            # thresholds = torch.linspace(start = X_node[:, feature].min(),
-            #                             end = X_node[:, feature].max(),
-            #                             steps = self.num_splits + 2)[1:self.num_splits+1]
-            uniques = X_node[:, feature].sort()[0].unique()
-            thresholds = (uniques[1:] + uniques[:-1])/2
-            for threshold in thresholds:
-                idx_left, idx_right = self.split(idx_node, feature, threshold)
-                gain = self.compute_gain(node, idx_node, idx_left, idx_right)
-                if gain > max_gain:
-                    max_gain = gain
-                    opt_feature = feature
-                    opt_threshold = threshold        
-        # Update node with optimal split
-        node.feature = opt_feature
-        node.threshold = opt_threshold
-        return max_gain
-
-    def split(self, idx_node:torch.Tensor, feature:torch.Tensor, threshold:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        X_node = self.X_train[idx_node]
-
-        left_ind = X_node[:, feature] <= threshold
-        idx_left = idx_node[left_ind]
-        idx_right = idx_node[~left_ind]
-        return idx_left, idx_right
+        super().fit(X_train = X_train,
+                    y_train = y_train)
 
     def compute_gain(self, node:Node, idx_node:torch.Tensor, idx_left:torch.Tensor, idx_right:torch.Tensor) -> torch.Tensor:
         left_info = self.compute_info(idx_left)
@@ -150,7 +81,7 @@ class AdaBoost():
         num_examples = X_train.size()[0]
         self.EPSILON = 1e-7/num_examples
         # Init
-        self.learners = [DecisionTreeAdaBoost(method_info = self.method_info,
+        self.learners = [DecisionTreeWeighted(method_info = self.method_info,
                                               max_depth   = self.max_depth,
                                               drop_features = True)
                         for learner in range(self.num_learners)]

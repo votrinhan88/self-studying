@@ -4,12 +4,14 @@ import torch
 import torch.nn.functional as F
 
 from typing import Tuple, Literal
-from typing_extensions import Self
 
 class Node():
-    def __init__(self, task:Literal['r', 'c'] = 'c', depth:int = None, path:str = '', parent = None):
+    def __init__(self, task:Literal['r', 'c'] = 'c',
+                       depth:int = None,
+                       path:str = '',
+                       parent = None):
         # Arguments
-        self.task = task
+        self.task        = task
         self.depth       = depth
         self.path        = path
         self.parent:Node = parent
@@ -18,7 +20,7 @@ class Node():
         self.info:torch.Tensor = None
         self.feature:torch.Tensor = None
         self.threshold:torch.Tensor = None
-        self.children:list[Node] = None
+        self.children:list[Node] = []
         # Based on task (Classification/Regression)
         self.value:torch.Tensor = None
         if self.task == 'c':
@@ -31,7 +33,7 @@ class Node():
         elif self.depth > 0:
             return f"{self.__class__.__name__}-{self.task} {self.path}, I = {self.info:.3f}, value = {round(self.value, 2)}"
 
-    def branch(self) -> list[Self]:
+    def branch(self): # -> Tuple[Self, Self]
         left_node  = Node(task = self.task, depth = self.depth + 1, path = self.path + 'L', parent = self)
         right_node = Node(task = self.task, depth = self.depth + 1, path = self.path + 'R', parent = self)
         return left_node, right_node
@@ -44,9 +46,9 @@ class DecisionTree():
         assert ((task == 'c') & (method_info in ['gini', 'entropy']) |
                 (task == 'r') & (method_info in ['var', 'std'])), \
                "Use task 'c' with method_info 'gini' or 'entropy', or task 'r' with method_info 'var' or 'std'"
-        self.task        = task
-        self.method_info = method_info
-        self.max_depth   = max_depth
+        self.task          = task
+        self.method_info   = method_info
+        self.max_depth     = max_depth
         self.drop_features = drop_features
 
         self.depth:int = 0
@@ -72,38 +74,40 @@ class DecisionTree():
             self.feed = self.feed_r
             self.compute_info = self.compute_info_r
 
-        self.feed(self.root, y_train)
-        self.grow(node = self.root, X_node = X_train, y_node = y_train)
+        idx_root = torch.arange(self.X_train.size()[0])
+        self.feed(node = self.root,
+                  idx_label = idx_root)
+        self.grow(node = self.root,
+                  idx_node = idx_root)
 
-    def grow(self, node:Node, X_node:torch.Tensor, y_node:torch.Tensor):
-        max_gain = self.find_best_split(node, X_node, y_node)
+    def grow(self, node:Node, idx_node:torch.Tensor):
+        max_gain = self.find_best_split(node, idx_node)
         if max_gain > 0:
             # Continue growing
-            ## Re-split data by optimal feature and threshold for children nodes
             self.depth = max(self.depth, node.depth + 1)
             left_node, right_node = node.branch()
             node.children = [left_node, right_node]
-
-            left_ind = X_node[:, node.feature] <= node.threshold
-            X_left, y_left = X_node[left_ind], y_node[left_ind]
-            X_right, y_right = X_node[~left_ind], y_node[~left_ind]
+            # Re-split data by optimal feature and threshold for children nodes
+            idx_left, idx_right = self.split(idx_node, feature = node.feature, threshold = node.threshold)
             # Leaf node:
             #  - Has a unique class distribution (contains only one class)
             #  - OR has reached max depth
-            for (branch, X_branch, y_branch) in zip([left_node, right_node], [X_left, X_right], [y_left, y_right]):
-                self.feed(branch, y_branch)
+            for (branch, idx_branch) in zip([left_node, right_node], [idx_left, idx_right]):
+                self.feed(branch, idx_branch)
+                y_branch = self.y_train[idx_branch]
                 if (len(y_branch.unique()) == 1) | (branch.depth == self.max_depth):
                     branch.is_leaf = True
                 else:
-                    self.grow(branch, X_branch, y_branch)
+                    self.grow(branch, idx_branch)
     
-    def find_best_split(self, node:Node, X_node:torch.Tensor, y_node:torch.Tensor):
+    def find_best_split(self, node:Node, idx_node:torch.Tensor) -> torch.Tensor:
+        X_node = self.X_train[idx_node]
         # Select random features (sqrt() of previous node's num_features)
         if self.drop_features == True:
             shuffle_idx = torch.randperm(self.feature_picks.numel())
             self.feature_picks = self.feature_picks.view(-1)[shuffle_idx].view(self.feature_picks.size())
             self.feature_picks = self.feature_picks[0:int(self.feature_picks.numel()**0.5)]
-        # Split based on the reduced set of features (or not)
+        # Split based on the reduced (or not) set of features 
         max_gain = -torch.tensor(float('inf'))
         for feature in torch.arange(self.num_features):
             # thresholds = torch.linspace(start = X_node[:, feature].min(),
@@ -112,8 +116,13 @@ class DecisionTree():
             uniques = X_node[:, feature].sort()[0].unique()
             thresholds = (uniques[1:] + uniques[:-1])/2
             for threshold in thresholds:
-                left, right = self.split(X_node, y_node, feature, threshold)
-                gain = self.compute_gain(node, y_node, left, right)
+                idx_left, idx_right = self.split(idx_node = idx_node,
+                                                 feature = feature,
+                                                 threshold = threshold)
+                gain = self.compute_gain(node,
+                                         idx_node = idx_node,
+                                         idx_left = idx_left,
+                                         idx_right = idx_right)
                 if gain > max_gain:
                     max_gain = gain
                     opt_feature = feature
@@ -123,29 +132,49 @@ class DecisionTree():
         node.threshold = opt_threshold
         return max_gain
 
-    def split(self, X_node:torch.Tensor, y_node:torch.Tensor, feature, threshold) -> Tuple[torch.Tensor, torch.Tensor]:
-        left_ys  = y_node[X_node[:, feature] < threshold]
-        right_ys = y_node[X_node[:, feature] >= threshold]
-        return left_ys, right_ys
+    def split(self, idx_node:torch.Tensor, feature:torch.Tensor, threshold:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        X_node = self.X_train[idx_node]
 
-    def compute_gain(self, node:Node, y_node:torch.Tensor, left:torch.Tensor, right:torch.Tensor) -> torch.Tensor:
-        left_info = self.compute_info(left)
-        right_info = self.compute_info(right)
-        gain = node.info - (left.size()[0]*left_info + right.size()[0]*right_info)/y_node.size()[0]
+        left_ind = X_node[:, feature] <= threshold
+        idx_left = idx_node[left_ind]
+        idx_right = idx_node[~left_ind]
+        return idx_left, idx_right
+
+    def compute_gain(self, node:Node, idx_node:torch.Tensor, idx_left:torch.Tensor, idx_right:torch.Tensor) -> torch.Tensor:
+        left_info = self.compute_info(idx_left)
+        right_info = self.compute_info(idx_right)
+        
+        gain = node.info - (idx_left.numel()*left_info + idx_right.numel()*right_info)/idx_node.numel()
+        
+        # w_node = self.weights[idx_node].sum()
+        # w_left = self.weights[idx_left].sum()
+        # w_right = self.weights[idx_right].sum()
+        # gain = w_node*node.info - (w_left/w_node*left_info + w_right/w_node*right_info)
         return gain
 
-    def feed_c(self, node:Node, label:torch.Tensor):
-        node.distr:torch.Tensor = F.one_hot(label.squeeze(dim = 1), num_classes = self.num_classes).sum(dim = 0)
-        node.value = node.distr.max(dim = 0)[1]
-        node.info = self.compute_info_c(label)
+    def feed_c(self, node:Node, idx_label:torch.Tensor):
+        label = self.y_train[idx_label]
+        node.info = self.compute_info_c(idx_label)
+        onehot:torch.Tensor = F.one_hot(label.squeeze(dim = 1), num_classes = self.num_classes)
+        
+        node.distr = onehot.sum(dim = 0)
 
-    def feed_r(self, node:Node, label:torch.Tensor):
+        # node.distr = (self.weights[idx_label]*onehot).sum(dim = 0)
+        # node.distr = node.distr/node.distr.sum()
+
+        node.value = node.distr.max(dim = 0)[1]
+
+    def feed_r(self, node:Node, idx_label:torch.Tensor):
+        label = self.y_train[idx_label]
+        node.info = self.compute_info_r(idx_label)
         node.value = label.mean()
-        node.info = self.compute_info_r(label)
     
-    def compute_info_c(self, label:torch.Tensor) -> torch.Tensor:
+    def compute_info_c(self, idx_label:torch.Tensor) -> torch.Tensor:
+        label = self.y_train[idx_label]
+        
         # Classification: reducing Gini impurity or entropy
-        distr:torch.Tensor = F.one_hot(label.squeeze(dim = 1), num_classes = self.num_classes).sum(dim = 0)
+        onehot:torch.Tensor = F.one_hot(label.squeeze(dim = 1), num_classes = self.num_classes)
+        distr = onehot.sum(dim = 0)
         distr = distr/distr.sum()
         if self.method_info == 'gini':
             info = 1 - (distr**2).sum()
@@ -159,7 +188,9 @@ class DecisionTree():
             info = -(distr[distr != 0]*distr[distr != 0].log()).sum()
         return info
     
-    def compute_info_r(self, label:torch.Tensor) -> torch.Tensor:
+    def compute_info_r(self, idx_label:torch.Tensor) -> torch.Tensor:
+        label = self.y_train[idx_label]
+
         # Regression: reducing Variance or Standard deviation
         if self.method_info == 'var':
             info = ((label - label.mean())**2).sum()/label.size()[0]
@@ -213,10 +244,10 @@ class DecisionTree():
                 elif node.is_leaf == False:
                     left_ind = input[:, node.feature] < node.threshold
                     left_input, right_input = input[left_ind, :], input[~left_ind, :]
-                    left_yhat_id, right_yhat_id = yhat_id[left_ind, :], yhat_id[~left_ind, :]
-                    for branch, branch_input, branch_yhat_id in zip(node.children, [left_input, right_input], [left_yhat_id, right_yhat_id]):
-                        if len(branch_yhat_id) > 0:
-                            yhat = traverse_forward(branch, branch_input, yhat, branch_yhat_id)
+                    idx_left, idx_right = yhat_id[left_ind, :], yhat_id[~left_ind, :]
+                    for branch, branch_input, idx_branch in zip(node.children, [left_input, right_input], [idx_left, idx_right]):
+                        if len(idx_branch) > 0:
+                            yhat = traverse_forward(branch, branch_input, yhat, idx_branch)
                     return yhat
 
             yhat = -torch.ones([input.size()[0], 1])
@@ -253,7 +284,7 @@ if __name__ == '__main__':
     def signal(input):
         return 0.8*input + torch.sin(input)
     X_train = 10*torch.rand([NUM_OBSERVED, 1])
-    y_train = signal(input)
+    y_train = signal(X_train)
 
     h = DecisionTree(task = 'r', method_info = 'var', max_depth = 3, drop_features = True)
     h.fit(X_train, y_train)
