@@ -51,9 +51,14 @@ class Cell():
         self.entropy = self.options.size
 
 class SudokuTable():
-    def __init__(self, size:int = 9):
+    def __init__(self, size:int = 9, verbose:bool = False):
         self.size = size
+        self.verbose = verbose
+
         self.make_table()
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__} of {self.size}x{self.size}" + '\n' + np.array_str(self.value)
 
     def make_table(self):
         self.cells:np.ndarray = np.array([[Cell(self.size, (row, col))
@@ -86,7 +91,8 @@ class SudokuTable():
                 self.iterate()
             elif self.stuck == True:
                 # Start over when stuck. To-do: backtracking(?)
-                print('Got stuck. Starting over...')
+                if self.verbose == True:
+                    print('Got stuck. Starting over...')
                 self.make_table()
                 self.collapse()
 
@@ -111,13 +117,10 @@ class SudokuTable():
         if min_entropy == 0:
             # The collapse has no solution
             self.stuck = True
-            return
         elif min_entropy > 0:
             # Collapse cell with lowest entropy (shuffle if many)
             clps_coords = tuple(np.random.permutation(clps_coords)[0])
             self.collapse_single(clps_coords)  
-            return
-
 
     def collapse_single(self, clps_coords:np.ndarray):
         clps_cell:Cell = self.cells[clps_coords]
@@ -130,6 +133,6 @@ class SudokuTable():
 
 t = SudokuTable(9)
 t.collapse()
-print(t.value)
+print(t)
 
 print()
