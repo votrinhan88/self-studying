@@ -53,13 +53,16 @@ class Cell():
 class SudokuTable():
     def __init__(self, size:int = 9):
         self.size = size
+        self.make_table()
 
+    def make_table(self):
         self.cells:np.ndarray = np.array([[Cell(self.size, (row, col))
                                             for col in range(self.size)]
                                                 for row in range(self.size)], dtype = Cell)
         
         self.value:np.ndarray = -np.ones([self.size, self.size], dtype = int)
         self.collapsed:np.ndarray = np.zeros([self.size, self.size], dtype = bool)
+        self.stuck:bool = False
 
         # Make cells in the same row, column, or 3x3 grid allies
         stride = round(np.sqrt(self.size))
@@ -77,30 +80,44 @@ class SudokuTable():
             cell.find_unique_allies()
 
     def collapse(self):
-        # Exists cells that haven't collapsed
-        while self.collapsed.prod() == False:
-            self.iterate()
+        while (self.collapsed.prod() == False):
+            if self.stuck == False:
+                # Continue finding a solution
+                self.iterate()
+            elif self.stuck == True:
+                # Start over when stuck. To-do: backtracking(?)
+                print('Got stuck. Starting over...')
+                self.make_table()
+                self.collapse()
 
     def iterate(self):
-        # Check collapsed
+        # Check non-collapsed cells
         coord_row, coord_col = np.asarray(self.collapsed == False).nonzero()
+        
         min_entropy = np.array(float('inf'))
-
+        clps_coords = None
+        # Loop through non-collapsed cells to find new collapsible cells
         for coords in zip(coord_row, coord_col):
             ## Calculate entropy
             cell:Cell = self.cells[coords]
             cell.compute_entropy()
-
             # Memorize cells with lowest entropy
             if cell.entropy < min_entropy:
                 min_entropy = cell.entropy
                 clps_coords = np.expand_dims(coords, axis = 0)
             elif cell.entropy == min_entropy:
                 clps_coords = np.concatenate([clps_coords, np.expand_dims(coords, axis = 0)], axis = 0)
+        
+        if min_entropy == 0:
+            # The collapse has no solution
+            self.stuck = True
+            return
+        elif min_entropy > 0:
+            # Collapse cell with lowest entropy (shuffle if many)
+            clps_coords = tuple(np.random.permutation(clps_coords)[0])
+            self.collapse_single(clps_coords)  
+            return
 
-        # Collapse cell with lowest entropy (shuffle if many)
-        clps_coords = tuple(np.random.permutation(clps_coords)[0])
-        self.collapse_single(clps_coords)
 
     def collapse_single(self, clps_coords:np.ndarray):
         clps_cell:Cell = self.cells[clps_coords]
@@ -114,3 +131,5 @@ class SudokuTable():
 t = SudokuTable(9)
 t.collapse()
 print(t.value)
+
+print()
