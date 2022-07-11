@@ -131,8 +131,100 @@ class SudokuTable():
 
         clps_cell.propagate()
 
-t = SudokuTable(9)
-t.collapse()
-print(t)
+class MineCell(Cell):
+    def __init__(self, coords:Tuple[int, int]):
+        self.NUM_MINES = 9
 
-print()
+        self.num_options = self.NUM_MINES + 1
+        self.coords = coords
+
+        self.collapsed:bool = False
+        self.entropy:np.ndarray = None
+        self.options:np.ndarray = np.arange(self.num_options)
+        self.value:np.ndarray = -1
+
+        self.allies:List[MineCell] = []
+    
+    def collapse(self):
+        # if self.options.size == 1:
+        #     self.value = self.options[0]
+        # elif self.options.size > 1:
+        #     self.value = np.random.permutation(self.options)[0]
+        # self.collapsed = True
+        pass
+        
+    def propagate(self):
+        # for cell in self.allies:
+        #     cell.options = cell.options[cell.options != self.value]
+        pass
+
+
+
+class MineField():
+    def __init__(self, size:Tuple[int, int], mine_ratio:float):
+        self.size = size
+        self.mine_ratio = mine_ratio
+        
+        self._mines:np.ndarray = None
+        self._values:np.ndarray = None
+
+        self.MINE_VALUE = 9
+
+        self._make_field()
+    
+    def _make_field(self):
+        self._mines = (np.random.rand(self.size[0], self.size[1]) <= self.mine_ratio).astype(int)
+        mines_padded:np.ndarray = np.pad(self._mines, pad_width = 1, constant_values = 0)    
+
+        # kernel = np.array([[1, 1, 1],[1, 0, 1],[1, 1, 1]])
+        self._num_mines = mines_padded[0:-2, 0:-2] + mines_padded[0:-2, 1:-1] + mines_padded[0:-2, 2:] + \
+                          mines_padded[1:-1, 0:-2] +                        0 + mines_padded[1:-1, 2:] + \
+                          mines_padded[2:  , 0:-2] + mines_padded[2:  , 1:-1] + mines_padded[2:  , 2:]
+        self._num_mines[self._mines == 1] = self.MINE_VALUE
+
+    def print_field(self):
+        field = self._num_mines.astype(np.dtype('U25'))
+        field[field == str(self.MINE_VALUE)] = 'X'
+        print(field)
+
+class MineSweeper():
+    def __init__(self, field:MineField, verbose:bool = False):
+        self.field = field
+        self.verbose = verbose
+
+        self.size = self.field.size
+        self.make_table()
+
+    def make_table(self):
+        self.cells:np.ndarray = np.array([[MineCell((row, col))
+                                            for col in range(self.size[1])]
+                                                for row in range(self.size[0])], dtype = MineCell)
+        
+        self.value:np.ndarray = -np.ones([self.size[0], self.size[1]], dtype = int)
+        self.collapsed:np.ndarray = np.zeros([self.size[0], self.size[1]], dtype = bool)
+        self.stuck:bool = False
+
+        # Make cells in the 1-cell radius allies
+        for row in np.arange(self.size[0]):
+            for col in np.arange(self.size[1]):
+                xs = np.arange(np.maximum(0, row-1), np.minimum(self.size[0], row+1)+1)
+                ys = np.arange(np.maximum(0, col-1), np.minimum(self.size[1], col+1)+1)
+                
+
+                # print()
+
+    def make_allies(self, cell:np.ndarray):
+        cell.allies = np.concatenate([cell.allies, cell.flatten()])
+
+if __name__ == '__main__':
+    # Task 1: Generate a sudoku table
+    # t = SudokuTable(9)
+    # t.collapse()
+    # print(t)
+
+    # Task 2:
+    m = MineField((10, 10), 0.3)
+    m.print_field()
+    ms = MineSweeper(field = m)
+    # ms.collapse()
+    print()
